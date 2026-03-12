@@ -1,0 +1,2 @@
+[console_scripts]
+uwb_node = uwb_mdek1001.uwb_node:main

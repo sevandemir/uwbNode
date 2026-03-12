@@ -1,0 +1,37 @@
+[0.959s] Invoking command in '/home/muhammed-servan/PycharmProjects/uwbNode/src/uwb_mdek1001': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PS1=(.venv) \[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ PYTHONPATH=/home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/uwb_mdek1001 build --build-base /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build install --record /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/install.log --single-version-externally-managed install_data
+[1.231s] running egg_info
+[1.232s] creating ../../build/uwb_mdek1001/uwb_mdek1001.egg-info
+[1.250s] writing ../../build/uwb_mdek1001/uwb_mdek1001.egg-info/PKG-INFO
+[1.250s] writing dependency_links to ../../build/uwb_mdek1001/uwb_mdek1001.egg-info/dependency_links.txt
+[1.251s] writing entry points to ../../build/uwb_mdek1001/uwb_mdek1001.egg-info/entry_points.txt
+[1.251s] writing requirements to ../../build/uwb_mdek1001/uwb_mdek1001.egg-info/requires.txt
+[1.251s] writing top-level names to ../../build/uwb_mdek1001/uwb_mdek1001.egg-info/top_level.txt
+[1.251s] writing manifest file '../../build/uwb_mdek1001/uwb_mdek1001.egg-info/SOURCES.txt'
+[1.289s] reading manifest file '../../build/uwb_mdek1001/uwb_mdek1001.egg-info/SOURCES.txt'
+[1.290s] writing manifest file '../../build/uwb_mdek1001/uwb_mdek1001.egg-info/SOURCES.txt'
+[1.290s] running build
+[1.290s] running build_py
+[1.290s] creating /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build
+[1.290s] creating /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build/lib
+[1.290s] creating /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build/lib/uwb_mdek1001
+[1.290s] copying uwb_mdek1001/uwb_node.py -> /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build/lib/uwb_mdek1001
+[1.291s] copying uwb_mdek1001/__init__.py -> /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build/lib/uwb_mdek1001
+[1.291s] running install
+[1.298s] running install_lib
+[1.318s] creating /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages/uwb_mdek1001
+[1.318s] copying /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build/lib/uwb_mdek1001/uwb_node.py -> /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages/uwb_mdek1001
+[1.318s] copying /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build/lib/uwb_mdek1001/__init__.py -> /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages/uwb_mdek1001
+[1.318s] byte-compiling /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages/uwb_mdek1001/uwb_node.py to uwb_node.cpython-312.pyc
+[1.321s] byte-compiling /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages/uwb_mdek1001/__init__.py to __init__.cpython-312.pyc
+[1.321s] running install_data
+[1.321s] creating /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/share/ament_index
+[1.321s] creating /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/share/ament_index/resource_index
+[1.321s] creating /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/share/ament_index/resource_index/packages
+[1.322s] copying resource/uwb_mdek1001 -> /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/share/ament_index/resource_index/packages
+[1.322s] copying package.xml -> /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/share/uwb_mdek1001
+[1.322s] running install_egg_info
+[1.342s] Copying ../../build/uwb_mdek1001/uwb_mdek1001.egg-info to /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages/uwb_mdek1001-0.0.1-py3.12.egg-info
+[1.343s] running install_scripts
+[1.481s] Installing uwb_node script to /home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/uwb_mdek1001
+[1.482s] writing list of installed files to '/home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/install.log'
+[1.509s] Invoked command in '/home/muhammed-servan/PycharmProjects/uwbNode/src/uwb_mdek1001' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PS1=(.venv) \[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ PYTHONPATH=/home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/muhammed-servan/PycharmProjects/uwbNode/install/uwb_mdek1001/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/uwb_mdek1001 build --build-base /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/build install --record /home/muhammed-servan/PycharmProjects/uwbNode/build/uwb_mdek1001/install.log --single-version-externally-managed install_data

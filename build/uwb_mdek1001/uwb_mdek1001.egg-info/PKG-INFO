@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: uwb-mdek1001
+Version: 0.0.1
+Summary: MDEK1001 UWB ROS2 Node
+Maintainer: muhammed-servan
+Maintainer-email: sen@email.com
+License: MIT
