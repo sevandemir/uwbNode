@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>uwb_mdek1001</name>
+  <version>0.0.1</version>
+  <description>MDEK1001 UWB mesafe/konum ROS 1 node</description>
+  <maintainer email="sen@email.com">muhammed-servan</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend condition="$ROS_PYTHON_VERSION == 2">python-serial</exec_depend>
+  <exec_depend condition="$ROS_PYTHON_VERSION == 3">python3-serial</exec_depend>
+</package>

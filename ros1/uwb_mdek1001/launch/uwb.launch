@@ -1,0 +1,17 @@
+<launch>
+  <!-- udev kuralı kuruluysa /dev/uwb kullanın; değilse /dev/ttyACM0 -->
+  <arg name="port"          default="/dev/ttyACM0"/>
+  <arg name="pose_frame_id" default="map"/>
+
+  <node pkg="uwb_mdek1001" type="uwb_node.py" name="mdek1001_uwb_node" output="screen" respawn="true">
+    <param name="serial_port"   value="$(arg port)"/>
+    <param name="baud_rate"     value="115200"/>
+    <param name="pose_frame_id" value="$(arg pose_frame_id)"/>
+    <param name="frame_id"      value="uwb_link"/>
+    <!-- Sağlık eşikleri (sn) -->
+    <param name="warn_age"      value="0.3"/>
+    <param name="error_age"     value="1.0"/>
+    <!-- Konum belirsizliği: std = pos_std_base * 100 / qf (m) -->
+    <param name="pos_std_base"  value="0.05"/>
+  </node>
+</launch>

@@ -1,0 +1,6 @@
+# MDEK1001 / DWM1001-DEV (SEGGER J-Link OB, CDC UART) -> /dev/uwb
+# Kurulum:
+#   sudo cp 99-uwb-mdek1001.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+# Not: Araçta başka bir J-Link cihazı varsa ATTRS{serial}=="..." ile tag'in seri numarasını da ekleyin.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1366", ATTRS{idProduct}=="0105", SYMLINK+="uwb", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"

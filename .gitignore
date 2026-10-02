@@ -1,0 +1,6 @@
+build/
+install/
+log/
+__pycache__/
+*.pyc
+uwb_test_*.log

@@ -1,85 +1,70 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
-MDEK1001 UWB - ROS2 Distance Data Publisher
-Otonom araç için UWB mesafe verisi yayıncısı
+MDEK1001 UWB - ROS 1 (rospy) Distance/Position Publisher
+Otonom araç için UWB mesafe ve konum verisi yayıncısı.
+
+Python 2.7 (ROS Melodic) ve Python 3 (ROS Noetic) uyumludur.
 
 Her ölçüm cihazdan geldiği anda, alındığı anın zaman damgasıyla BİR KEZ yayınlanır.
 Eski veri tekrar yayınlanmaz; verinin tazeliğine tüketici (EKF / kontrolcü)
 header.stamp ve /diagnostics üzerinden karar verir.
+
+Yayınlanan topic'ler:
+  uwb/pose       geometry_msgs/PoseWithCovarianceStamped  (tag'in hesapladığı konum)
+  uwb/range      sensor_msgs/Range  (anchor başına; frame_id = <frame_id>/<anchor_id>)
+  uwb/all_ranges std_msgs/Float32MultiArray  (satırdaki mesafeler, anchor ID sırasıyla)
+  uwb/raw        std_msgs/String  (cihazdan gelen ham satır)
+  /diagnostics   diagnostic_msgs/DiagnosticArray  ("UWB mesafe" ve "UWB konum" durumları)
 """
 
+import sys
 import threading
 import time
 
-import rclpy
-from rclpy.duration import Duration
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+import rospy
+import serial
 from std_msgs.msg import Float32MultiArray, String
 from sensor_msgs.msg import Range
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-import serial
 
-from uwb_mdek1001.lec_parser import parse_lec_line, LecData
+from lec_parser import parse_lec_line
+
+PY2 = sys.version_info[0] == 2
+monotonic = getattr(time, 'monotonic', time.time)   # time.monotonic Python 2.7'de yok
 
 
-class MDEK1001Node(Node):
+class MDEK1001Node(object):
     """
     MDEK1001 UWB modülünden seri port üzerinden veri okuyup
-    ROS2 topic'lerine yayınlayan node.
+    ROS topic'lerine yayınlayan node.
     """
 
     def __init__(self):
-        super().__init__('mdek1001_uwb_node')
-
-        # --- Parametreler ---
-        self.declare_parameter('serial_port', '/dev/ttyACM0')
-        self.declare_parameter('baud_rate', 115200)
-        self.declare_parameter('frame_id', 'uwb_link')
-        self.declare_parameter('pose_frame_id', 'map')
-        self.declare_parameter('min_range', 0.05)              # metre
-        self.declare_parameter('max_range', 60.0)              # metre
-        self.declare_parameter('latency_offset', 0.0)          # sn, ölçüm ile UART'tan okunma arası tahmini gecikme
-        self.declare_parameter('orientation_variance', 1.0e6)  # UWB yönelim ölçmez → çok büyük belirsizlik
-        self.declare_parameter('z_variance', 1.0e6)            # m², anchor'lar ~aynı yükseklikte → z güvenilmez
-        self.declare_parameter('pos_std_base', 0.05)           # m, qf=100 iken yatay konum std sapması
-        self.declare_parameter('pos_std_max', 2.0)             # m, düşük qf'de üst sınır
-        self.declare_parameter('status_rate', 10.0)            # Hz, /diagnostics yayın hızı
-        self.declare_parameter('warn_age', 0.3)                # sn, son ölçüm bundan eskiyse WARN
-        self.declare_parameter('error_age', 1.0)               # sn, son ölçüm bundan eskiyse ERROR
-        self.declare_parameter('data_timeout', 3.0)            # sn, bu süre hiç satır gelmezse 'lec' yeniden başlatılır
-
-        self.serial_port          = self.get_parameter('serial_port').value
-        self.baud_rate            = self.get_parameter('baud_rate').value
-        self.frame_id             = self.get_parameter('frame_id').value
-        self.pose_frame_id        = self.get_parameter('pose_frame_id').value
-        self.min_range            = self.get_parameter('min_range').value
-        self.max_range            = self.get_parameter('max_range').value
-        self.latency_offset       = Duration(seconds=self.get_parameter('latency_offset').value)
-        self.orientation_variance = self.get_parameter('orientation_variance').value
-        self.z_variance           = self.get_parameter('z_variance').value
-        self.pos_std_base         = self.get_parameter('pos_std_base').value
-        self.pos_std_max          = self.get_parameter('pos_std_max').value
-        self.status_rate          = self.get_parameter('status_rate').value
-        self.warn_age             = self.get_parameter('warn_age').value
-        self.error_age            = self.get_parameter('error_age').value
-        self.data_timeout         = self.get_parameter('data_timeout').value
-
-        # --- QoS ---
-        qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10
-        )
+        # --- Parametreler (~ = node'a özel) ---
+        self.serial_port          = rospy.get_param('~serial_port', '/dev/ttyACM0')
+        self.baud_rate            = int(rospy.get_param('~baud_rate', 115200))
+        self.frame_id             = rospy.get_param('~frame_id', 'uwb_link')
+        self.pose_frame_id        = rospy.get_param('~pose_frame_id', 'map')
+        self.min_range            = float(rospy.get_param('~min_range', 0.05))         # metre
+        self.max_range            = float(rospy.get_param('~max_range', 60.0))         # metre
+        self.latency_offset       = rospy.Duration(float(rospy.get_param('~latency_offset', 0.0)))  # sn
+        self.orientation_variance = float(rospy.get_param('~orientation_variance', 1.0e6))  # UWB yönelim ölçmez
+        self.z_variance           = float(rospy.get_param('~z_variance', 1.0e6))       # m², z güvenilmez
+        self.pos_std_base         = float(rospy.get_param('~pos_std_base', 0.05))      # m, qf=100 iken std
+        self.pos_std_max          = float(rospy.get_param('~pos_std_max', 2.0))        # m, üst sınır
+        self.status_rate          = float(rospy.get_param('~status_rate', 10.0))       # Hz, /diagnostics
+        self.warn_age             = float(rospy.get_param('~warn_age', 0.3))           # sn
+        self.error_age            = float(rospy.get_param('~error_age', 1.0))          # sn
+        self.data_timeout         = float(rospy.get_param('~data_timeout', 3.0))       # sn, sonra 'lec' yeniden
 
         # --- Publisher'lar ---
-        self.range_pub  = self.create_publisher(Range, 'uwb/range', qos)
-        self.ranges_pub = self.create_publisher(Float32MultiArray, 'uwb/all_ranges', qos)
-        self.pose_pub   = self.create_publisher(PoseWithCovarianceStamped, 'uwb/pose', qos)
-        self.raw_pub    = self.create_publisher(String, 'uwb/raw', 10)
-        self.diag_pub   = self.create_publisher(DiagnosticArray, '/diagnostics', 10)
+        self.range_pub  = rospy.Publisher('uwb/range', Range, queue_size=10)
+        self.ranges_pub = rospy.Publisher('uwb/all_ranges', Float32MultiArray, queue_size=10)
+        self.pose_pub   = rospy.Publisher('uwb/pose', PoseWithCovarianceStamped, queue_size=10)
+        self.raw_pub    = rospy.Publisher('uwb/raw', String, queue_size=10)
+        self.diag_pub   = rospy.Publisher('/diagnostics', DiagnosticArray, queue_size=10)
 
         # --- Seri port ---
         self.ser = None
@@ -96,37 +81,42 @@ class MDEK1001Node(Node):
 
         # --- Okuma thread'i (bağlantıyı da kendisi kurar) ---
         self.running = True
-        self.read_thread = threading.Thread(target=self._read_serial, daemon=True)
+        self.read_thread = threading.Thread(target=self._read_serial)
+        self.read_thread.daemon = True   # Python 2.7: Thread(daemon=...) parametresi yok
         self.read_thread.start()
 
         # --- Sağlık yayını: veri kesilse bile sabit hızda yayınlanır ---
-        self.status_timer = self.create_timer(1.0 / self.status_rate, self._publish_status)
+        self.status_timer = rospy.Timer(rospy.Duration(1.0 / self.status_rate), self._publish_status)
 
-        self.get_logger().info(
-            f'MDEK1001 UWB Node başlatıldı  →  port={self.serial_port}, baud={self.baud_rate}'
-        )
+        rospy.on_shutdown(self.shutdown)
+        rospy.loginfo('MDEK1001 UWB Node başlatıldı  ->  port={}, baud={}'.format(
+            self.serial_port, self.baud_rate))
 
     # ------------------------------------------------------------------ #
     #  Seri Port
     # ------------------------------------------------------------------ #
 
-    def _connect_serial(self) -> bool:
+    def _connect_serial(self):
+        kwargs = dict(
+            port=self.serial_port,
+            baudrate=self.baud_rate,
+            timeout=1.0,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+        )
         try:
-            self.ser = serial.Serial(
-                port=self.serial_port,
-                baudrate=self.baud_rate,
-                timeout=1.0,
-                bytesize=serial.EIGHTBITS,
-                parity=serial.PARITY_NONE,
-                stopbits=serial.STOPBITS_ONE,
-                exclusive=True,   # aynı portu başka bir süreç (ikinci node vb.) açamasın
-            )
+            try:
+                # aynı portu başka bir süreç (ikinci node vb.) açamasın
+                self.ser = serial.Serial(exclusive=True, **kwargs)
+            except TypeError:
+                self.ser = serial.Serial(**kwargs)   # pyserial < 3.3: exclusive desteklenmiyor
         except (serial.SerialException, OSError) as e:
-            self.get_logger().error(f'Seri port açılamadı: {e}', throttle_duration_sec=10.0)
+            rospy.logerr_throttle(10.0, 'Seri port açılamadı: {}'.format(e))
             self.ser = None
             return False
 
-        self.get_logger().info('Seri port bağlantısı kuruldu.')
+        rospy.loginfo('Seri port bağlantısı kuruldu.')
         self._start_lec()
         return True
 
@@ -144,8 +134,8 @@ class MDEK1001Node(Node):
         time.sleep(1.0)                 # shell banner'ı ve 'dwm>' prompt'u için
         self.ser.reset_input_buffer()
         self.ser.write(b'lec\r')        # sadece CR: LF ikinci bir Enter sayılıp akışı durdurabilir
-        self.last_line_time = time.monotonic()
-        self.get_logger().info("'lec' komutu gönderildi, veri bekleniyor…")
+        self.last_line_time = monotonic()
+        rospy.loginfo("'lec' komutu gönderildi, veri bekleniyor...")
 
     def _close_serial(self):
         if self.ser is not None:
@@ -157,7 +147,7 @@ class MDEK1001Node(Node):
 
     def _read_serial(self):
         """Arka planda seri port'tan satır okur ve ayrıştırır."""
-        while self.running:
+        while self.running and not rospy.is_shutdown():
             if self.ser is None or not self.ser.is_open:
                 if not self._connect_serial():
                     time.sleep(1.0)
@@ -165,61 +155,58 @@ class MDEK1001Node(Node):
             try:
                 raw = self.ser.readline()
                 # Zaman damgası satır okunur okunmaz alınır; ayrıştırma süresi ölçüme eklenmez
-                stamp = self.get_clock().now() - self.latency_offset
-                line = raw.decode('utf-8', errors='ignore').strip()
+                stamp = rospy.Time.now() - self.latency_offset
+                # Cihaz çıktısı ASCII; gürültü baytları atılır. Python 2'de native str'e çevrilir.
+                line = raw.decode('ascii', 'ignore').strip()
+                if PY2:
+                    line = line.encode('ascii')
                 if line:
-                    self.last_line_time = time.monotonic()
+                    self.last_line_time = monotonic()
                     self._handle_line(line, stamp)
-                elif time.monotonic() - self.last_line_time > self.data_timeout:
-                    self.get_logger().warn(
-                        f'{self.data_timeout:.0f} sn boyunca veri gelmedi, lec yeniden başlatılıyor. '
-                        '(Cihaz tag modunda mı? Port başka bir programda açık mı?)'
-                    )
+                elif monotonic() - self.last_line_time > self.data_timeout:
+                    rospy.logwarn(
+                        '{:.0f} sn boyunca veri gelmedi, lec yeniden başlatılıyor. '
+                        '(Cihaz tag modunda mı? Port başka bir programda açık mı?)'.format(self.data_timeout))
                     self._start_lec()
             except (serial.SerialException, OSError) as e:
                 if self.running:
-                    self.get_logger().warn(f'Okuma hatası: {e}')
+                    rospy.logwarn('Okuma hatası: {}'.format(e))
                 self._close_serial()
 
     # ------------------------------------------------------------------ #
     #  Veri İşleme ve Yayın
     # ------------------------------------------------------------------ #
 
-    def _handle_line(self, line: str, stamp):
+    def _handle_line(self, line, stamp):
         # Ham veriyi yayınla
-        msg = String()
-        msg.data = line
-        self.raw_pub.publish(msg)
+        self.raw_pub.publish(String(data=line))
 
         data = parse_lec_line(line)
         if data is None:
-            self.get_logger().debug(f'Tanınmayan satır: {line!r}')
+            rospy.logdebug('Tanınmayan satır: {!r}'.format(line))
             return
         if not data.distances and data.position is None:
-            return   # ör. 'DIST,0' → hiç anchor görülmüyor; ölçüm sayılmaz
+            return   # ör. 'DIST,0' -> hiç anchor görülmüyor; ölçüm sayılmaz
 
-        stamp_msg = stamp.to_msg()
         if data.distances:
-            self._publish_ranges(data, stamp_msg)
+            self._publish_ranges(data, stamp)
         if data.position is not None:
-            self._publish_pose(data, stamp_msg)
+            self._publish_pose(data, stamp)
         self._update_stats(data)
 
-    def _publish_ranges(self, data: LecData, stamp_msg):
-        distances = dict(sorted(data.distances.items()))   # sabit sıra: anchor ID
+    def _publish_ranges(self, data, stamp):
+        items = sorted(data.distances.items())   # sabit sıra: anchor ID
 
         # Bu satırdaki tüm mesafeler (anchor ID sırasıyla)
-        arr_msg = Float32MultiArray()
-        arr_msg.data = list(distances.values())
-        self.ranges_pub.publish(arr_msg)
+        self.ranges_pub.publish(Float32MultiArray(data=[d for _, d in items]))
 
         # Her anchor için ayrı Range mesajı; anchor ID frame_id içinde
-        for anchor_id, dist in distances.items():
+        for anchor_id, dist in items:
             if not (self.min_range <= dist <= self.max_range):
                 continue
             r = Range()
-            r.header.stamp    = stamp_msg
-            r.header.frame_id = f'{self.frame_id}/{anchor_id}'
+            r.header.stamp    = stamp
+            r.header.frame_id = '{}/{}'.format(self.frame_id, anchor_id)
             r.radiation_type  = Range.INFRARED   # UWB için en yakın tip
             r.field_of_view   = 0.0              # UWB yönlü değil
             r.min_range       = self.min_range
@@ -227,42 +214,43 @@ class MDEK1001Node(Node):
             r.range           = dist
             self.range_pub.publish(r)
 
-        self.get_logger().debug(f'Mesafeler: {distances}')
+        rospy.logdebug('Mesafeler: {}'.format(dict(items)))
 
-    def _publish_pose(self, data: LecData, stamp_msg):
+    def _publish_pose(self, data, stamp):
         pos = data.position
         msg = PoseWithCovarianceStamped()
-        msg.header.stamp    = stamp_msg
+        msg.header.stamp    = stamp
         msg.header.frame_id = self.pose_frame_id
         msg.pose.pose.position.x = pos.x
         msg.pose.pose.position.y = pos.y
         msg.pose.pose.position.z = pos.z
         msg.pose.pose.orientation.w = 1.0
+
         # Yatay konum varyansı (m²): std = pos_std_base * 100 / qf
-        # (qf=80 → 6.3 cm; masa testinde ölçülen yatay hata ~6.6 cm)
+        # (qf=80 -> 6.3 cm; masa testinde ölçülen yatay hata ~6.6 cm)
         std = min(self.pos_std_max, self.pos_std_base * 100.0 / max(pos.qf, 1))
-        msg.pose.covariance[0]  = std * std
-        msg.pose.covariance[7]  = std * std
-        msg.pose.covariance[14] = self.z_variance
+        cov = [0.0] * 36
+        cov[0]  = std * std
+        cov[7]  = std * std
+        cov[14] = self.z_variance
         # Yönelim ölçülmüyor: EKF bu eksenlere güvenmesin
-        msg.pose.covariance[21] = self.orientation_variance
-        msg.pose.covariance[28] = self.orientation_variance
-        msg.pose.covariance[35] = self.orientation_variance
+        cov[21] = self.orientation_variance
+        cov[28] = self.orientation_variance
+        cov[35] = self.orientation_variance
+        msg.pose.covariance = cov
 
         self.pose_pub.publish(msg)
-        self.get_logger().debug(
-            f'Konum: x={pos.x:.3f}, y={pos.y:.3f}, z={pos.z:.3f}, qf={pos.qf}'
-        )
+        rospy.logdebug('Konum: x={:.3f}, y={:.3f}, z={:.3f}, qf={}'.format(pos.x, pos.y, pos.z, pos.qf))
 
-    def _update_stats(self, data: LecData):
-        now = time.monotonic()
+    def _update_stats(self, data):
+        now = monotonic()
         with self.lock:
             if self.last_meas_time is not None:
                 dt = now - self.last_meas_time
                 self.meas_interval = dt if self.meas_interval is None \
                     else 0.9 * self.meas_interval + 0.1 * dt
             else:
-                self.get_logger().info(f'İlk ölçüm alındı: {data.distances} {data.position}')
+                rospy.loginfo('İlk ölçüm alındı: {} {}'.format(data.distances, data.position))
             self.last_meas_time = now
             self.meas_count += 1
             if data.distances:
@@ -275,8 +263,8 @@ class MDEK1001Node(Node):
     #  Sağlık Durumu (/diagnostics)
     # ------------------------------------------------------------------ #
 
-    def _publish_status(self):
-        now = time.monotonic()
+    def _publish_status(self, _event=None):
+        now = monotonic()
         port_open = self.ser is not None and self.ser.is_open
         with self.lock:
             meas_age = None if self.last_meas_time is None else now - self.last_meas_time
@@ -287,14 +275,14 @@ class MDEK1001Node(Node):
             count    = self.meas_count
 
         def fmt(v):
-            return 'nan' if v is None else f'{v:.3f}'
+            return 'nan' if v is None else '{:.3f}'.format(v)
 
         # Mesafe ve konum ayrı değerlendirilir: anchor < 3 iken mesafeler gelmeye
         # devam eder ama konum hesaplanamaz; kontrolcü bunu görebilmeli.
         ranges_st = self._age_status('UWB mesafe', meas_age, port_open)
         ranges_st.values = [
             KeyValue(key='age_s',             value=fmt(meas_age)),
-            KeyValue(key='rate_hz',           value=f'{rate:.1f}'),
+            KeyValue(key='rate_hz',           value='{:.1f}'.format(rate)),
             KeyValue(key='anchor_count',      value=str(anchors)),
             KeyValue(key='measurement_count', value=str(count)),
             KeyValue(key='port_open',         value=str(port_open)),
@@ -307,22 +295,22 @@ class MDEK1001Node(Node):
         ]
 
         arr = DiagnosticArray()
-        arr.header.stamp = self.get_clock().now().to_msg()
+        arr.header.stamp = rospy.Time.now()
         arr.status = [ranges_st, pose_st]
         self.diag_pub.publish(arr)
 
-    def _age_status(self, what: str, age, port_open: bool) -> DiagnosticStatus:
+    def _age_status(self, what, age, port_open):
         st = DiagnosticStatus()
-        st.name = f'{self.get_name()}: {what}'
+        st.name = '{}: {}'.format(rospy.get_name().lstrip('/'), what)
         st.hardware_id = self.serial_port
         if not port_open:
             st.level, st.message = DiagnosticStatus.ERROR, 'Seri port kapalı'
         elif age is None:
             st.level, st.message = DiagnosticStatus.ERROR, 'Henüz veri alınmadı'
         elif age > self.error_age:
-            st.level, st.message = DiagnosticStatus.ERROR, f'Veri yok ({age:.2f} sn)'
+            st.level, st.message = DiagnosticStatus.ERROR, 'Veri yok ({:.2f} sn)'.format(age)
         elif age > self.warn_age:
-            st.level, st.message = DiagnosticStatus.WARN, f'Veri gecikiyor ({age:.2f} sn)'
+            st.level, st.message = DiagnosticStatus.WARN, 'Veri gecikiyor ({:.2f} sn)'.format(age)
         else:
             st.level, st.message = DiagnosticStatus.OK, 'OK'
         return st
@@ -331,8 +319,9 @@ class MDEK1001Node(Node):
     #  Temizlik
     # ------------------------------------------------------------------ #
 
-    def destroy_node(self):
+    def shutdown(self):
         self.running = False
+        self.status_timer.shutdown()
         self.read_thread.join(timeout=2.0)
         if self.ser is not None and self.ser.is_open:
             try:
@@ -344,20 +333,14 @@ class MDEK1001Node(Node):
             except (serial.SerialException, OSError):
                 pass
         self._close_serial()
-        super().destroy_node()
+        rospy.loginfo('Kapatıldı.')
 
 
 # ====================================================================== #
-def main(args=None):
-    rclpy.init(args=args)
-    node = MDEK1001Node()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        node.get_logger().info('Kapatılıyor…')
-    finally:
-        node.destroy_node()
-        rclpy.try_shutdown()
+def main():
+    rospy.init_node('mdek1001_uwb_node')
+    MDEK1001Node()
+    rospy.spin()
 
 
 if __name__ == '__main__':
