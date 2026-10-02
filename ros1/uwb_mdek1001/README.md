@@ -9,10 +9,12 @@ Python 2.7 (Melodic) ve Python 3 (Noetic) ile çalışır.
 # 0) Sistem bilgisi
 lsb_release -a; rosversion -d; echo $ROS_PYTHON_VERSION
 
-# 1) Paketi catkin çalışma alanına koyun: ~/catkin_ws/src/uwb_mdek1001
-cd ~/catkin_ws/src/uwb_mdek1001
-sed -i 's/\r$//' scripts/*.py launch/*.launch     # Windows satır sonlarını temizle
-chmod +x scripts/uwb_node.py
+# 1) Repoyu çalışma alanının DIŞINA klonlayın (repoda ROS 2 paketi de var, catkin onu
+#    derleyemez) ve sadece ROS 1 paketini çalışma alanına bağlayın. WS = aracın çalışma alanı
+WS=~/bosch_ws
+cd ~ && git clone https://github.com/sevandemir/uwbNode.git
+ln -s ~/uwbNode/ros1/uwb_mdek1001 $WS/src/uwb_mdek1001
+cd ~/uwbNode/ros1/uwb_mdek1001
 
 # 2) Bağımlılık
 sudo apt install python-serial      # Melodic (Python 2)
@@ -26,11 +28,14 @@ sudo cp udev/99-uwb-mdek1001.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ls -l /dev/uwb
 
-# 5) Derleme
-cd ~/catkin_ws && catkin_make && source devel/setup.bash
+# 5) Derleme (çalışma alanı hangi araçla kurulduysa: catkin_make veya catkin build)
+cd $WS && catkin_make && source devel/setup.bash
+# veya: cd $WS && catkin build uwb_mdek1001 && source devel/setup.bash
 ```
 
-Noetic'te `python` komutu yoksa: `sudo apt install python-is-python3`
+Güncelleme: `cd ~/uwbNode && git pull` (Python dosyaları için yeniden derleme gerekmez; node'u yeniden başlatın).
+
+Melodic (Python 2) kullanılıyorsa `scripts/uwb_node.py` ilk satırını `#!/usr/bin/env python` yapın.
 
 ## Çalıştırma
 

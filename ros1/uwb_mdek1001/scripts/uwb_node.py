@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 MDEK1001 UWB - ROS 1 (rospy) Distance/Position Publisher
