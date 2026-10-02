@@ -13,5 +13,7 @@
     <param name="error_age"     value="1.0"/>
     <!-- Konum belirsizliği: std = pos_std_base * 100 / qf (m) -->
     <param name="pos_std_base"  value="0.05"/>
+    <!-- Terminale özet log aralığı (sn), 0 = kapalı -->
+    <param name="summary_period" value="5.0"/>
   </node>
 </launch>

@@ -58,6 +58,8 @@ class MDEK1001Node(object):
         self.warn_age             = float(rospy.get_param('~warn_age', 0.3))           # sn
         self.error_age            = float(rospy.get_param('~error_age', 1.0))          # sn
         self.data_timeout         = float(rospy.get_param('~data_timeout', 3.0))       # sn, sonra 'lec' yeniden
+        self.summary_period       = float(rospy.get_param('~summary_period', 5.0))     # sn, özet log (0 = kapalı)
+        self.last_summary_time    = monotonic()
 
         # --- Publisher'lar ---
         self.range_pub  = rospy.Publisher('uwb/range', Range, queue_size=10)
@@ -298,6 +300,19 @@ class MDEK1001Node(object):
         arr.header.stamp = rospy.Time.now()
         arr.status = [ranges_st, pose_st]
         self.diag_pub.publish(arr)
+
+        # Periyodik özet: node'un çalıştığı terminalden görülebilsin
+        if self.summary_period > 0 and now - self.last_summary_time >= self.summary_period:
+            self.last_summary_time = now
+            names = {DiagnosticStatus.OK: 'OK', DiagnosticStatus.WARN: 'WARN', DiagnosticStatus.ERROR: 'ERROR'}
+            text = 'Özet: {:.1f} Hz, {} anchor, qf={}, toplam {} ölçüm | mesafe {} (yaş {} sn) | konum {} (yaş {} sn)'.format(
+                rate, anchors, qf, count,
+                names.get(ranges_st.level, '?'), fmt(meas_age),
+                names.get(pose_st.level, '?'), fmt(pose_age))
+            if pose_st.level == DiagnosticStatus.OK and ranges_st.level == DiagnosticStatus.OK:
+                rospy.loginfo(text)
+            else:
+                rospy.logwarn(text)
 
     def _age_status(self, what, age, port_open):
         st = DiagnosticStatus()
