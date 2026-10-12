@@ -18,12 +18,14 @@ Yayınlanan topic'ler:
   /diagnostics   diagnostic_msgs/DiagnosticArray  ("UWB mesafe" ve "UWB konum" durumları)
 """
 
+import os
 import sys
 import threading
 import time
 
 import rospy
 import serial
+import serial.tools.list_ports
 from std_msgs.msg import Float32MultiArray, String
 from sensor_msgs.msg import Range
 from geometry_msgs.msg import PoseWithCovarianceStamped
@@ -43,7 +45,10 @@ class MDEK1001Node(object):
 
     def __init__(self):
         # --- Parametreler (~ = node'a özel) ---
-        self.serial_port          = rospy.get_param('~serial_port', '/dev/ttyACM0')
+        self.serial_port          = rospy.get_param('~serial_port', '/dev/uwb')
+        # Porttaki cihazın USB kimliği (VID:PID). Uymazsa porta komut gönderilmez.
+        # 1366:0105 = MDEK1001/DWM1001-DEV üzerindeki SEGGER J-Link. Boş = kontrol yok.
+        self.expected_usb_id      = str(rospy.get_param('~expected_usb_id', '1366:0105')).strip().lower()
         self.baud_rate            = int(rospy.get_param('~baud_rate', 115200))
         self.frame_id             = rospy.get_param('~frame_id', 'uwb_link')
         self.pose_frame_id        = rospy.get_param('~pose_frame_id', 'map')
@@ -98,7 +103,34 @@ class MDEK1001Node(object):
     #  Seri Port
     # ------------------------------------------------------------------ #
 
+    def _is_expected_device(self):
+        """
+        Port gerçekten UWB tag'i mi? Aracın başka bir seri cihazına (ör. ttyACM numarası
+        kaydığında) shell komutu gönderilmesini engeller.
+        """
+        if not self.expected_usb_id:
+            return True
+        real = os.path.realpath(self.serial_port)
+        for p in serial.tools.list_ports.comports():
+            if os.path.realpath(p.device) != real:
+                continue
+            if p.vid is None or p.pid is None:
+                break   # USB olmayan port: kimlik bilinmiyor
+            got = '{:04x}:{:04x}'.format(p.vid, p.pid)
+            if got == self.expected_usb_id:
+                return True
+            rospy.logerr_throttle(
+                10.0, "{} UWB tag'i değil (USB {} - {}, beklenen {}). Port yanlış olabilir; "
+                      'bu cihaza bağlanılmıyor. Doğru port için: ls -l /dev/serial/by-id/'.format(
+                          self.serial_port, got, p.description, self.expected_usb_id))
+            return False
+        rospy.logwarn_throttle(
+            60.0, '{} için USB kimliği okunamadı; kimlik kontrolü atlanıyor.'.format(self.serial_port))
+        return True
+
     def _connect_serial(self):
+        if not self._is_expected_device():
+            return False
         kwargs = dict(
             port=self.serial_port,
             baudrate=self.baud_rate,

@@ -43,6 +43,18 @@ Melodic (Python 2) kullanılıyorsa `scripts/uwb_node.py` ilk satırını `#!/us
 roslaunch uwb_mdek1001 uwb.launch port:=/dev/uwb
 ```
 
+## Port isimleri (önemli)
+
+`/dev/ttyACM0`, `/dev/ttyACM1` numaraları cihaza değil USB'nin tanınma sırasına bağlıdır;
+açılışta veya kablo takıp çıkarınca kayabilir. Araçta başka seri cihazlar varsa numara kullanmayın:
+
+- UWB tag'i: `/dev/uwb` (udev kuralı, adım 4). Launch dosyasının varsayılanı budur.
+- Aracın kendi cihazları: `ls -l /dev/serial/by-id/` ile görünen sabit isimler.
+
+Node ayrıca porttaki cihazın USB kimliğini kontrol eder (`expected_usb_id`, varsayılan `1366:0105`).
+Cihaz UWB tag'i değilse porta bağlanmaz ve hiçbir komut göndermez. Yarışmada farklı bir
+UWB kartı verilirse kimliğini `lsusb` ile öğrenip bu parametreyi güncelleyin (boş = kontrol yok).
+
 ## Kontrol
 
 ```bash
@@ -69,7 +81,8 @@ Her ölçüm geldiği anda, okunduğu anın zaman damgasıyla bir kez yayınlan�
 | Belirti | Çözüm |
 |---|---|
 | `Seri port açılamadı: Permission denied` | `dialout` grubu (adım 3) ve oturumu yeniden açma |
-| `Seri port açılamadı: No such file` | `ls /dev/ttyACM* /dev/uwb`; doğru portu `port:=` ile verin |
+| `Seri port açılamadı: No such file` | `ls -l /dev/uwb /dev/serial/by-id/`; udev kuralı kurulu mu? |
+| `UWB tag'i değil (USB ...)` | Port başka bir cihaza ait; `ls -l /dev/serial/by-id/` ile doğru portu bulun |
 | `Device or resource busy` | minicom / başka bir node portu açık tutuyor |
 | `/usr/bin/env: 'python\r'` | Adım 1'deki `sed` komutu |
 | `veri gelmedi, lec yeniden başlatılıyor` | Takılı cihaz tag mı? (minicom'da `si` → `mode: tn`) |

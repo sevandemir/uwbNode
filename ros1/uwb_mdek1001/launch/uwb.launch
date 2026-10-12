@@ -1,10 +1,13 @@
 <launch>
-  <!-- udev kuralı kuruluysa /dev/uwb kullanın; değilse /dev/ttyACM0 -->
-  <arg name="port"          default="/dev/ttyACM0"/>
+  <!-- /dev/uwb: udev kuralının verdiği sabit isim (README). ttyACM numarası açılışta
+       kayabilir; aracın diğer seri cihazlarıyla karışmaması için numara kullanmayın. -->
+  <arg name="port"          default="/dev/uwb"/>
   <arg name="pose_frame_id" default="map"/>
 
   <node pkg="uwb_mdek1001" type="uwb_node.py" name="mdek1001_uwb_node" output="screen" respawn="true">
     <param name="serial_port"   value="$(arg port)"/>
+    <!-- Porttaki cihaz bu USB kimliğinde değilse bağlanılmaz (boş = kontrol yok) -->
+    <param name="expected_usb_id" value="1366:0105"/>
     <param name="baud_rate"     value="115200"/>
     <param name="pose_frame_id" value="$(arg pose_frame_id)"/>
     <param name="frame_id"      value="uwb_link"/>
