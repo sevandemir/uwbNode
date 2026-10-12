@@ -201,6 +201,12 @@ class MDEK1001Node(object):
         self.ser.reset_input_buffer()
         self.ser.write(b'\r\r')
         time.sleep(1.0)                 # shell banner'ı ve 'dwm>' prompt'u için
+        reply = self.ser.read(self.ser.in_waiting or 0)
+        if b'dwm>' in reply:
+            rospy.loginfo("Cihaz shell'e cevap verdi (dwm>).")
+        else:
+            rospy.logwarn("Cihaz shell'e cevap vermedi ({} bayt). Yeni takıldıysa açılıyor olabilir; "
+                          "tekrar denenecek.".format(len(reply)))
         self.ser.reset_input_buffer()
         self.ser.write(b'lec\r')        # sadece CR: LF ikinci bir Enter sayılıp akışı durdurabilir
         self.last_line_time = monotonic()
