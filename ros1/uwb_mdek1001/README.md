@@ -40,19 +40,30 @@ Melodic (Python 2) kullanılıyorsa `scripts/uwb_node.py` ilk satırını `#!/us
 ## Çalıştırma
 
 ```bash
-roslaunch uwb_mdek1001 uwb.launch port:=/dev/uwb
+roslaunch uwb_mdek1001 uwb.launch            # tag'i USB kimliğinden kendisi bulur
+roslaunch uwb_mdek1001 uwb.launch port:=/dev/uwb   # veya sabit yol
 ```
+
+Bağlanınca bulduğu port loga yazılır, ardından 5 sn'de bir özet gelir:
+
+```
+Seri port bağlantısı kuruldu: /dev/ttyACM1 (J-Link - CDC, USB 1366:0105)
+Özet [/dev/ttyACM1]: 10.0 Hz, 4 anchor, qf=80, toplam 50 ölçüm | mesafe OK (...) | konum OK (...)
+```
+
+Tag bulunamazsa hata satırı o an görünen tüm seri portları listeler.
 
 ## Port isimleri (önemli)
 
 `/dev/ttyACM0`, `/dev/ttyACM1` numaraları cihaza değil USB'nin tanınma sırasına bağlıdır;
 açılışta veya kablo takıp çıkarınca kayabilir. Araçta başka seri cihazlar varsa numara kullanmayın:
 
-- UWB tag'i: `/dev/uwb` (udev kuralı, adım 4). Launch dosyasının varsayılanı budur.
+- UWB tag'i: varsayılan `port:=auto` tag'i USB kimliğinden bulur (udev kuralı gerekmez);
+  istenirse udev kuralının verdiği `/dev/uwb` de kullanılabilir.
 - Aracın kendi cihazları: `ls -l /dev/serial/by-id/` ile görünen sabit isimler.
 
-Node ayrıca porttaki cihazın USB kimliğini kontrol eder (`expected_usb_id`, varsayılan `1366:0105`).
-Cihaz UWB tag'i değilse porta bağlanmaz ve hiçbir komut göndermez. Yarışmada farklı bir
+Sabit yol verilirse node porttaki cihazın USB kimliğini kontrol eder (`expected_usb_id`,
+varsayılan `1366:0105`). Cihaz UWB tag'i değilse porta bağlanmaz ve hiçbir komut göndermez. Yarışmada farklı bir
 UWB kartı verilirse kimliğini `lsusb` ile öğrenip bu parametreyi güncelleyin (boş = kontrol yok).
 
 ## Kontrol

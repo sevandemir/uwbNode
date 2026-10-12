@@ -45,9 +45,10 @@ class MDEK1001Node(object):
 
     def __init__(self):
         # --- Parametreler (~ = node'a özel) ---
-        self.serial_port          = rospy.get_param('~serial_port', '/dev/uwb')
-        # Porttaki cihazın USB kimliği (VID:PID). Uymazsa porta komut gönderilmez.
-        # 1366:0105 = MDEK1001/DWM1001-DEV üzerindeki SEGGER J-Link. Boş = kontrol yok.
+        # 'auto' = tag'i USB kimliğinden bul; ya da sabit yol (ör. /dev/uwb)
+        self.serial_port          = str(rospy.get_param('~serial_port', 'auto'))
+        # Tag'in USB kimliği (VID:PID). auto modunda bununla aranır; sabit yolda porttaki
+        # cihaz buna uymazsa bağlanılmaz. 1366:0105 = MDEK1001 üzerindeki SEGGER J-Link.
         self.expected_usb_id      = str(rospy.get_param('~expected_usb_id', '1366:0105')).strip().lower()
         self.baud_rate            = int(rospy.get_param('~baud_rate', 115200))
         self.frame_id             = rospy.get_param('~frame_id', 'uwb_link')
@@ -75,6 +76,7 @@ class MDEK1001Node(object):
 
         # --- Seri port ---
         self.ser = None
+        self.active_port = '-'
         self.last_line_time = 0.0
 
         # --- Sağlık istatistikleri (okuma thread'i yazar, status timer'ı okur) ---
@@ -103,36 +105,68 @@ class MDEK1001Node(object):
     #  Seri Port
     # ------------------------------------------------------------------ #
 
-    def _is_expected_device(self):
+    @staticmethod
+    def _usb_id(p):
+        return None if p.vid is None or p.pid is None else '{:04x}:{:04x}'.format(p.vid, p.pid)
+
+    @staticmethod
+    def _port_list():
+        return ', '.join('{} ({}, {})'.format(p.device, p.description, MDEK1001Node._usb_id(p) or 'USB değil')
+                         for p in serial.tools.list_ports.comports()) or 'hiç seri port yok'
+
+    def _find_port(self):
         """
-        Port gerçekten UWB tag'i mi? Aracın başka bir seri cihazına (ör. ttyACM numarası
-        kaydığında) shell komutu gönderilmesini engeller.
+        Bağlanılacak portu ve açıklamasını döndürür; bulunamazsa / uygun değilse None.
+
+        serial_port='auto': USB kimliği expected_usb_id olan cihaz aranır (port numarası
+        ne olursa olsun bulunur; kablo çıkıp takılınca numara değişse de yeniden bulunur).
+        Belirli bir yol verilmişse: porttaki cihazın USB kimliği doğrulanır; UWB tag'i
+        değilse aracın başka bir seri cihazına shell komutu gönderilmesin diye bağlanılmaz.
         """
-        if not self.expected_usb_id:
-            return True
+        ports = list(serial.tools.list_ports.comports())
+
+        if self.serial_port.lower() == 'auto':
+            if not self.expected_usb_id:
+                rospy.logerr_throttle(10.0, "serial_port=auto için expected_usb_id boş olamaz.")
+                return None
+            found = [p for p in ports if self._usb_id(p) == self.expected_usb_id]
+            if not found:
+                rospy.logerr_throttle(
+                    10.0, 'UWB tag bulunamadı (USB {}). Takılı mı? Görünen portlar: {}'.format(
+                        self.expected_usb_id, self._port_list()))
+                return None
+            if len(found) > 1:
+                rospy.logwarn_throttle(
+                    60.0, 'Birden fazla UWB cihazı var: {}. İlki kullanılıyor; seçmek için '
+                          'port:=/dev/... verin.'.format(', '.join(p.device for p in found)))
+            p = found[0]
+            return p.device, '{}, USB {}'.format(p.description, self._usb_id(p))
+
         real = os.path.realpath(self.serial_port)
-        for p in serial.tools.list_ports.comports():
+        for p in ports:
             if os.path.realpath(p.device) != real:
                 continue
-            if p.vid is None or p.pid is None:
-                break   # USB olmayan port: kimlik bilinmiyor
-            got = '{:04x}:{:04x}'.format(p.vid, p.pid)
-            if got == self.expected_usb_id:
-                return True
+            got = self._usb_id(p)
+            if got is None or not self.expected_usb_id or got == self.expected_usb_id:
+                return self.serial_port, '{} -> {}, {}, USB {}'.format(
+                    self.serial_port, p.device, p.description, got or '?')
             rospy.logerr_throttle(
                 10.0, "{} UWB tag'i değil (USB {} - {}, beklenen {}). Port yanlış olabilir; "
-                      'bu cihaza bağlanılmıyor. Doğru port için: ls -l /dev/serial/by-id/'.format(
-                          self.serial_port, got, p.description, self.expected_usb_id))
-            return False
-        rospy.logwarn_throttle(
-            60.0, '{} için USB kimliği okunamadı; kimlik kontrolü atlanıyor.'.format(self.serial_port))
-        return True
+                      'bu cihaza bağlanılmıyor. Görünen portlar: {}'.format(
+                          self.serial_port, got, p.description, self.expected_usb_id, self._port_list()))
+            return None
+        if self.expected_usb_id:
+            rospy.logwarn_throttle(
+                60.0, '{} için USB kimliği okunamadı; kimlik kontrolü atlanıyor.'.format(self.serial_port))
+        return self.serial_port, self.serial_port
 
     def _connect_serial(self):
-        if not self._is_expected_device():
+        found = self._find_port()
+        if found is None:
             return False
+        port, info = found
         kwargs = dict(
-            port=self.serial_port,
+            port=port,
             baudrate=self.baud_rate,
             timeout=1.0,
             bytesize=serial.EIGHTBITS,
@@ -146,11 +180,12 @@ class MDEK1001Node(object):
             except TypeError:
                 self.ser = serial.Serial(**kwargs)   # pyserial < 3.3: exclusive desteklenmiyor
         except (serial.SerialException, OSError) as e:
-            rospy.logerr_throttle(10.0, 'Seri port açılamadı: {}'.format(e))
+            rospy.logerr_throttle(10.0, 'Seri port açılamadı ({}): {}'.format(port, e))
             self.ser = None
             return False
 
-        rospy.loginfo('Seri port bağlantısı kuruldu.')
+        self.active_port = port
+        rospy.loginfo('Seri port bağlantısı kuruldu: {} ({})'.format(port, info))
         self._start_lec()
         return True
 
@@ -337,8 +372,8 @@ class MDEK1001Node(object):
         if self.summary_period > 0 and now - self.last_summary_time >= self.summary_period:
             self.last_summary_time = now
             names = {DiagnosticStatus.OK: 'OK', DiagnosticStatus.WARN: 'WARN', DiagnosticStatus.ERROR: 'ERROR'}
-            text = 'Özet: {:.1f} Hz, {} anchor, qf={}, toplam {} ölçüm | mesafe {} (yaş {} sn) | konum {} (yaş {} sn)'.format(
-                rate, anchors, qf, count,
+            text = 'Özet [{}]: {:.1f} Hz, {} anchor, qf={}, toplam {} ölçüm | mesafe {} (yaş {} sn) | konum {} (yaş {} sn)'.format(
+                self.active_port if port_open else 'bağlı değil', rate, anchors, qf, count,
                 names.get(ranges_st.level, '?'), fmt(meas_age),
                 names.get(pose_st.level, '?'), fmt(pose_age))
             if pose_st.level == DiagnosticStatus.OK and ranges_st.level == DiagnosticStatus.OK:
@@ -349,7 +384,7 @@ class MDEK1001Node(object):
     def _age_status(self, what, age, port_open):
         st = DiagnosticStatus()
         st.name = '{}: {}'.format(rospy.get_name().lstrip('/'), what)
-        st.hardware_id = self.serial_port
+        st.hardware_id = self.active_port
         if not port_open:
             st.level, st.message = DiagnosticStatus.ERROR, 'Seri port kapalı'
         elif age is None:
